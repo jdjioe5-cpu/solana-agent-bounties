@@ -12,7 +12,13 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const MAX_BUNDLE_BYTES = 262_144;
-const CHROMIUM_BIN = process.env.CHROMIUM_BIN || '/usr/bin/chromium';
+const CHROMIUM_BIN = process.env.CHROMIUM_BIN || (process.platform === 'win32'
+  ? (existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
+      ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+      : (existsSync('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe')
+          ? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+          : 'chrome'))
+  : '/usr/bin/chromium');
 
 function walkFiles(root) {
   const out = [];
@@ -46,7 +52,8 @@ function checkStaticGate(dir) {
 }
 
 async function runCdpAudit(indexUrl) {
-  const profile = `/tmp/tma01-cdp-${process.pid}-${Date.now()}`;
+  const tmpBase = process.env.TEMP || process.env.TMPDIR || '/tmp';
+  const profile = join(tmpBase, `tma01-cdp-${process.pid}-${Date.now()}`);
   mkdirSync(profile, { recursive: true });
   const env = { ...process.env };
   delete env.DISPLAY;
@@ -140,7 +147,9 @@ async function runCdpAudit(indexUrl) {
     return { stateSummary: eval1.result.value, shotBytes: [shot1.length, shot2.length] };
   } finally {
     proc.kill('SIGKILL');
-    rmSync(profile, { recursive: true, force: true });
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    } catch {}
   }
 }
 
